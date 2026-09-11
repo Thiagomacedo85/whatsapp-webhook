@@ -2,9 +2,11 @@ const express = require('express');
 const app = express();
 app.use(express.json());
 
-const VERIFY_TOKEN = 'minha_verificacao_2026'; // troque por algo seu
+const VERIFY_TOKEN = 'minha_verificacao_2026';
+const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN;
+const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
 
-// 1. Verificação do webhook (GET) - a Meta chama isso ao salvar a config
+// Verificação do webhook (GET)
 app.get('/webhook', (req, res) => {
   const mode = req.query['hub.mode'];
   const token = req.query['hub.verify_token'];
@@ -18,10 +20,36 @@ app.get('/webhook', (req, res) => {
   }
 });
 
-// 2. Recebimento de eventos (POST) - mensagens, status, etc
-app.post('/webhook', (req, res) => {
-  console.log(JSON.stringify(req.body, null, 2));
-  // aqui você processa a mensagem recebida
+// Recebimento de mensagens (POST)
+app.post('/webhook', async (req, res) => {
+  const entry = req.body.entry?.[0];
+  const change = entry?.changes?.[0];
+  const message = change?.value?.messages?.[0];
+
+  if (message) {
+    const from = message.from; // número de quem enviou
+    const text = message.text?.body || '';
+    console.log(`Mensagem de ${from}: ${text}`);
+
+    try {
+      await fetch(`https://graph.facebook.com/v21.0/${PHONE_NUMBER_ID}/messages`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${WHATSAPP_TOKEN}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          messaging_product: 'whatsapp',
+          to: from,
+          text: { body: `Recebi sua mensagem: "${text}"` }
+        })
+      });
+      console.log('Resposta enviada!');
+    } catch (err) {
+      console.error('Erro ao enviar resposta:', err);
+    }
+  }
+
   res.sendStatus(200);
 });
 
