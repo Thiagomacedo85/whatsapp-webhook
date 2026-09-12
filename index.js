@@ -7,7 +7,6 @@ const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN;
 const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 
-// Guarda o histórico de cada conversa em memória (some se o servidor reiniciar)
 const conversations = {};
 
 app.get('/webhook', (req, res) => {
@@ -27,7 +26,6 @@ async function askClaude(from, userText) {
   if (!conversations[from]) conversations[from] = [];
   conversations[from].push({ role: 'user', content: userText });
 
-  // Mantém só as últimas 10 mensagens pra não crescer demais
   const history = conversations[from].slice(-10);
 
   const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -52,4 +50,44 @@ async function askClaude(from, userText) {
   return reply;
 }
 
-async
+async function sendWhatsAppMessage(to, text) {
+  const response = await fetch(`https://graph.facebook.com/v21.0/${PHONE_NUMBER_ID}/messages`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${WHATSAPP_TOKEN}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      messaging_product: 'whatsapp',
+      to: to,
+      text: { body: text }
+    })
+  });
+  const result = await response.json();
+  console.log('Status envio:', response.status, JSON.stringify(result));
+}
+
+app.post('/webhook', async (req, res) => {
+  const entry = req.body.entry?.[0];
+  const change = entry?.changes?.[0];
+  const message = change?.value?.messages?.[0];
+
+  if (message) {
+    const from = message.from;
+    const text = message.text?.body || '';
+    console.log(`Mensagem de ${from}: ${text}`);
+
+    try {
+      const reply = await askClaude(from, text);
+      console.log(`Resposta do Claude: ${reply}`);
+      await sendWhatsAppMessage(from, reply);
+    } catch (err) {
+      console.error('Erro:', err);
+    }
+  }
+
+  res.sendStatus(200);
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Rodando na porta ${PORT}`));
