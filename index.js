@@ -6,7 +6,6 @@ const VERIFY_TOKEN = 'minha_verificacao_2026';
 const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN;
 const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
 
-// Verificação do webhook (GET)
 app.get('/webhook', (req, res) => {
   const mode = req.query['hub.mode'];
   const token = req.query['hub.verify_token'];
@@ -20,19 +19,18 @@ app.get('/webhook', (req, res) => {
   }
 });
 
-// Recebimento de mensagens (POST)
 app.post('/webhook', async (req, res) => {
   const entry = req.body.entry?.[0];
   const change = entry?.changes?.[0];
   const message = change?.value?.messages?.[0];
 
   if (message) {
-    const from = message.from; // número de quem enviou
+    const from = message.from;
     const text = message.text?.body || '';
     console.log(`Mensagem de ${from}: ${text}`);
 
     try {
-      await fetch(`https://graph.facebook.com/v21.0/${PHONE_NUMBER_ID}/messages`, {
+      const response = await fetch(`https://graph.facebook.com/v21.0/${PHONE_NUMBER_ID}/messages`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${WHATSAPP_TOKEN}`,
@@ -44,7 +42,10 @@ app.post('/webhook', async (req, res) => {
           text: { body: `Recebi sua mensagem: "${text}"` }
         })
       });
-      console.log('Resposta enviada!');
+
+      const result = await response.json();
+      console.log('Status:', response.status);
+      console.log('Resposta da API:', JSON.stringify(result));
     } catch (err) {
       console.error('Erro ao enviar resposta:', err);
     }
