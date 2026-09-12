@@ -5,6 +5,10 @@ app.use(express.json());
 const VERIFY_TOKEN = 'minha_verificacao_2026';
 const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN;
 const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+
+// Guarda o histórico de cada conversa em memória (some se o servidor reiniciar)
+const conversations = {};
 
 app.get('/webhook', (req, res) => {
   const mode = req.query['hub.mode'];
@@ -19,40 +23,33 @@ app.get('/webhook', (req, res) => {
   }
 });
 
-app.post('/webhook', async (req, res) => {
-  const entry = req.body.entry?.[0];
-  const change = entry?.changes?.[0];
-  const message = change?.value?.messages?.[0];
+async function askClaude(from, userText) {
+  if (!conversations[from]) conversations[from] = [];
+  conversations[from].push({ role: 'user', content: userText });
 
-  if (message) {
-    const from = message.from;
-    const text = message.text?.body || '';
-    console.log(`Mensagem de ${from}: ${text}`);
+  // Mantém só as últimas 10 mensagens pra não crescer demais
+  const history = conversations[from].slice(-10);
 
-    try {
-      const response = await fetch(`https://graph.facebook.com/v21.0/${PHONE_NUMBER_ID}/messages`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${WHATSAPP_TOKEN}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          messaging_product: 'whatsapp',
-          to: from,
-          text: { body: `Recebi sua mensagem: "${text}"` }
-        })
-      });
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'x-api-key': ANTHROPIC_API_KEY,
+      'anthropic-version': '2023-06-01',
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 500,
+      system: 'Você é um assistente virtual da TGX Cargo, uma empresa de transporte/logística. Responda de forma educada, objetiva e curta, em português.',
+      messages: history
+    })
+  });
 
-      const result = await response.json();
-      console.log('Status:', response.status);
-      console.log('Resposta da API:', JSON.stringify(result));
-    } catch (err) {
-      console.error('Erro ao enviar resposta:', err);
-    }
-  }
+  const data = await response.json();
+  const reply = data.content?.[0]?.text || 'Desculpe, não consegui processar sua mensagem agora.';
 
-  res.sendStatus(200);
-});
+  conversations[from].push({ role: 'assistant', content: reply });
+  return reply;
+}
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Rodando na porta ${PORT}`));
+async
