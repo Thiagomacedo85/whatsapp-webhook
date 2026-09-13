@@ -2,12 +2,28 @@ const express = require('express');
 const app = express();
 app.use(express.json());
 
+const { createLeadDeal } = require('./rdstation');
+
 const VERIFY_TOKEN = 'minha_verificacao_2026';
 const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN;
 const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 
 const conversations = {};
+
+// Guarda os IDs das últimas mensagens processadas, pra não duplicar resposta
+// caso a Meta reenvie o mesmo webhook (acontece quando a resposta demora).
+const processedMessageIds = new Set();
+function alreadyProcessed(messageId) {
+  if (!messageId) return false;
+  if (processedMessageIds.has(messageId)) return true;
+  processedMessageIds.add(messageId);
+  if (processedMessageIds.size > 500) {
+    const oldest = processedMessageIds.values().next().value;
+    processedMessageIds.delete(oldest);
+  }
+  return false;
+}
 
 const SYSTEM_PROMPT = `Você é o assistente virtual da TGX Cargo, uma empresa de logística 3PL (third-party logistics).
 
@@ -109,26 +125,44 @@ async function sendWhatsAppMessage(to, text) {
   console.log('Status envio:', response.status, JSON.stringify(result));
 }
 
-app.post('/webhook', async (req, res) => {
+async function processMessage(message) {
+  const from = message.from;
+  const text = message.text?.body || '';
+  console.log(`Mensagem de ${from}: ${text}`);
+
+  // Se é a primeira vez que esse número fala com o bot, cria o lead no RD Station CRM.
+  // Roda em paralelo (não usa await bloqueante) pra não atrasar a resposta no WhatsApp;
+  // se o RD Station falhar, o bot continua funcionando normalmente.
+  const isNewContact = !conversations[from];
+  if (isNewContact) {
+    conversations[from] = [];
+    createLeadDeal(from).catch(err => console.error('Erro ao criar lead no RD Station:', err));
+  }
+
+  try {
+    const reply = await askClaude(from, text);
+    console.log(`Resposta do Claude: ${reply}`);
+    await sendWhatsAppMessage(from, reply);
+  } catch (err) {
+    console.error('Erro ao processar mensagem:', err);
+    await sendWhatsAppMessage(
+      from,
+      'Desculpe, tive um problema técnico agora. Pode tentar novamente em instantes?'
+    ).catch(sendErr => console.error('Erro ao avisar o usuário do problema:', sendErr));
+  }
+}
+
+app.post('/webhook', (req, res) => {
+  // Responde imediatamente pra Meta não reenviar o mesmo webhook por timeout.
+  res.sendStatus(200);
+
   const entry = req.body.entry?.[0];
   const change = entry?.changes?.[0];
   const message = change?.value?.messages?.[0];
 
-  if (message) {
-    const from = message.from;
-    const text = message.text?.body || '';
-    console.log(`Mensagem de ${from}: ${text}`);
-
-    try {
-      const reply = await askClaude(from, text);
-      console.log(`Resposta do Claude: ${reply}`);
-      await sendWhatsAppMessage(from, reply);
-    } catch (err) {
-      console.error('Erro:', err);
-    }
+  if (message && !alreadyProcessed(message.id)) {
+    processMessage(message).catch(err => console.error('Erro no processamento da mensagem:', err));
   }
-
-  res.sendStatus(200);
 });
 
 const PORT = process.env.PORT || 3000;
