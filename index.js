@@ -2,7 +2,7 @@ const express = require('express');
 const app = express();
 app.use(express.json());
 
-const { createLeadDeal } = require('./rdstation');
+const { createLeadDeal, addNoteToDeal } = require('./rdstation');
 
 const VERIFY_TOKEN = 'minha_verificacao_2026';
 const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN;
@@ -10,6 +10,10 @@ const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 
 const conversations = {};
+
+// Guarda o deal_id do RD Station de cada número, pra poder anexar anotações
+// nas mensagens seguintes sem precisar recriar a negociação.
+const leadDeals = {};
 
 // Guarda os IDs das últimas mensagens processadas, pra não duplicar resposta
 // caso a Meta reenvie o mesmo webhook (acontece quando a resposta demora).
@@ -131,18 +135,35 @@ async function processMessage(message) {
   console.log(`Mensagem de ${from}: ${text}`);
 
   // Se é a primeira vez que esse número fala com o bot, cria o lead no RD Station CRM.
-  // Roda em paralelo (não usa await bloqueante) pra não atrasar a resposta no WhatsApp;
-  // se o RD Station falhar, o bot continua funcionando normalmente.
+  // Dispara em paralelo com a resposta do Claude (não bloqueia o WhatsApp) e só é
+  // "esperado" (await) depois, quando já precisamos do deal_id pra anexar a anotação.
   const isNewContact = !conversations[from];
+  let dealPromise = null;
   if (isNewContact) {
     conversations[from] = [];
-    createLeadDeal(from).catch(err => console.error('Erro ao criar lead no RD Station:', err));
+    dealPromise = createLeadDeal(from).catch(err => {
+      console.error('Erro ao criar lead no RD Station:', err);
+      return null;
+    });
   }
 
   try {
     const reply = await askClaude(from, text);
     console.log(`Resposta do Claude: ${reply}`);
     await sendWhatsAppMessage(from, reply);
+
+    // Garante que temos o deal_id (seja de agora, se é lead novo, ou de antes).
+    if (isNewContact) {
+      const dealId = await dealPromise;
+      if (dealId) leadDeals[from] = dealId;
+    }
+
+    const dealId = leadDeals[from];
+    if (dealId) {
+      addNoteToDeal(dealId, `Cliente: ${text}\nBot: ${reply}`).catch(err =>
+        console.error('Erro ao adicionar anotação no RD Station:', err)
+      );
+    }
   } catch (err) {
     console.error('Erro ao processar mensagem:', err);
     await sendWhatsAppMessage(
