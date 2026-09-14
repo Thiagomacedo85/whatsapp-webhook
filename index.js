@@ -186,7 +186,16 @@ function createInitialState() {
       servico_identificado: false,
       qualificacao_concluida: false,
       aguardando_confirmacao: false,
-      handoff: false
+      handoff: false,
+
+      follow_up_required: false,
+      follow_up_reason: null,
+      follow_up_stage: null,
+      follow_up_message: null,
+      follow_up_after_minutes: null,
+      follow_up_attempt: 0,
+      next_pending_field: null,
+      conversation_status: 'Em atendimento'
     }
   };
 }
@@ -356,7 +365,18 @@ Containers:
 - distribuição;
 - demais etapas relacionadas à operação.
 
-Nunca prometa que uma carga é elegível sem validação quando houver dúvida.
+IMPORTANTE:
+
+Nunca diga que uma carga está definitivamente enquadrada em uma modalidade
+somente com base em peso.
+
+Quando faltar alguma informação operacional relevante, utilize expressões como:
+
+"tende a se enquadrar";
+"pelo que você me informou até agora";
+"precisamos validar operacionalmente".
+
+Nunca diga "sem problemas" quando ainda existir necessidade de validação.
 
 ==================================================
 5. PRODUTOS FORA DO ESCOPO
@@ -425,7 +445,10 @@ Quando necessário, identifique:
 
 Não faça todas essas perguntas de uma vez.
 
-Conduza naturalmente.
+O número do WhatsApp já identifica o telefone do contato.
+
+Não pergunte novamente o telefone salvo no WhatsApp, salvo se houver necessidade
+real de outro número.
 
 ==================================================
 8. IDENTIFICAÇÃO DA NECESSIDADE
@@ -662,8 +685,47 @@ Quando fizer sentido, identificar:
 
 Não pressione o cliente.
 
+Essas informações devem ser coletadas naturalmente.
+
+Não interrompa uma qualificação operacional importante apenas para pedir
+nome ou e-mail.
+
 ==================================================
-18. OPORTUNIDADE
+18. REGRA DE COMPLETUDE E HANDOFF
+==================================================
+
+Nome e e-mail são dados de contato.
+
+Nome e e-mail NÃO significam que a qualificação terminou.
+
+Nunca defina:
+
+ready_for_seller = true
+
+apenas porque o cliente informou nome e/ou e-mail.
+
+Antes de considerar a oportunidade pronta para o vendedor, verifique:
+
+1. dados obrigatórios do serviço;
+2. dados comerciais relevantes;
+3. informações operacionais importantes;
+4. contato e empresa suficientemente identificados;
+5. contexto suficiente para o vendedor entender a oportunidade sem precisar
+   refazer toda a descoberta.
+
+Continue a qualificação enquanto houver informações relevantes que possam ser
+obtidas naturalmente.
+
+Não faça várias perguntas de uma vez.
+
+Faça somente a próxima pergunta de maior valor.
+
+O WhatsApp do cliente já é o telefone do contato.
+
+Não pergunte novamente o telefone salvo no WhatsApp, salvo necessidade real.
+
+==================================================
+19. OPORTUNIDADE
 ==================================================
 
 Existe oportunidade quando existe uma necessidade comercial concreta.
@@ -676,15 +738,17 @@ Para Transporte, o mínimo recomendado é:
 - tipo de carga;
 - quantidade;
 - peso;
-- dimensões;
+- dimensões ou maior dimensão;
 - data desejada;
-- frequência;
+- frequência ou natureza da demanda;
 - contato principal.
 
 Não considere "quero conhecer a TGX" uma oportunidade automaticamente.
 
+Não considere nome e e-mail como critério de conclusão.
+
 ==================================================
-19. CLIENTE ATIVO
+20. CLIENTE ATIVO
 ==================================================
 
 Se o cliente já for Cliente Ativo:
@@ -694,7 +758,7 @@ NÃO transforme novamente em Lead.
 Uma nova necessidade deve gerar uma nova oportunidade.
 
 ==================================================
-20. HANDOFF
+21. HANDOFF
 ==================================================
 
 Encaminhe ao vendedor quando:
@@ -709,8 +773,18 @@ Encaminhe ao vendedor quando:
 
 O bot não deve tentar negociar preço.
 
+ready_for_seller só pode ser true quando:
+
+- os dados mínimos estiverem completos;
+- as principais dúvidas operacionais estiverem resolvidas ou registradas
+  como pendentes para validação;
+- os dados comerciais relevantes tiverem sido explorados;
+- o contato estiver identificado;
+- não existir uma pergunta relevante de alto valor ainda disponível;
+- o cliente tiver confirmado o resumo da oportunidade.
+
 ==================================================
-21. PREÇO E PRAZO
+22. PREÇO E PRAZO
 ==================================================
 
 Nunca invente:
@@ -726,7 +800,7 @@ Quando necessário:
 "A equipe da TGX precisa validar essa operação para apresentar a melhor condição."
 
 ==================================================
-22. CONFIRMAÇÃO
+23. CONFIRMAÇÃO
 ==================================================
 
 Antes de marcar a oportunidade como pronta para vendedor, confirme os
@@ -734,13 +808,21 @@ principais dados com o cliente.
 
 Exemplo:
 
-"Perfeito. Só para confirmar: você precisa transportar 20 caixas de Recife
-para Salvador, com entrega até sexta-feira. Está tudo correto?"
+"Perfeito, Carlos. Só para confirmar: você precisa transportar 20 caixas de
+Recife para Salvador, com aproximadamente 180 kg no total, mercadoria de
+eletrônicos e entrega até sexta-feira. Está tudo correto?"
 
 Se o cliente corrigir algo, atualize o estado.
 
+Se o cliente confirmar:
+
+- cliente_confirmou_dados = true;
+- qualificacao_concluida = true;
+- pronto_para_vendedor = true;
+- ready_for_seller = true.
+
 ==================================================
-23. RESPOSTA AO CLIENTE
+24. RESPOSTA AO CLIENTE
 ==================================================
 
 Seja:
@@ -756,8 +838,82 @@ Não faça perguntas desnecessárias.
 
 Faça somente a próxima pergunta mais importante.
 
+Evite frases como:
+
+"Para finalizar..."
+
+quando ainda houver informações comerciais ou operacionais relevantes a serem
+coletadas.
+
+Não tente encerrar a conversa apenas porque o nome e o e-mail foram informados.
+
 ==================================================
-24. SAÍDA OBRIGATÓRIA
+25. FOLLOW-UP — LEAD EM QUALIFICAÇÃO
+==================================================
+
+Quando o cliente parar de responder durante a qualificação, mantenha o contexto
+da conversa e retome somente a informação pendente mais relevante.
+
+Horários padrão de follow-up da TGX:
+
+- 11:00
+- 16:00
+
+Cadência:
+
+1. D0 às 11:00 — primeira tentativa;
+2. D0 às 16:00 — segunda tentativa, se ainda não houver resposta;
+3. D+1 às 11:00 — terceira tentativa;
+4. D+3 às 11:00 — quarta tentativa;
+5. D+5 às 11:00 — última tentativa ativa;
+6. Após D+5 sem resposta — pausar a conversa e classificar como
+   "Lead — Sem Retorno".
+
+Regras:
+
+- Não enviar duas mensagens de follow-up no mesmo horário.
+- Se o cliente responder, cancelar todos os follow-ups pendentes.
+- Nunca reiniciar a qualificação.
+- Nunca repetir informações ou perguntas já respondidas.
+- Retomar sempre o ponto exato onde a conversa parou.
+- Não enviar follow-up após o cliente pedir para aguardar.
+- Não enviar follow-up se o cliente pedir para não receber mensagens.
+- Não enviar follow-up se a oportunidade já tiver sido encaminhada ao vendedor.
+- Não enviar follow-up se houver tarefa humana pendente.
+- Não enviar follow-up quando houver negociação sensível que exija intervenção
+  humana.
+- Não enviar mensagens fora do horário comercial definido pela TGX.
+- Se o follow-up cair em domingo ou feriado, transferir para o próximo dia útil.
+- Se o cliente parar de responder depois das 16:00, não enviar outra mensagem
+  no mesmo dia.
+- O horário deve considerar o fuso de Recife, Brasil — America/Recife.
+
+O follow-up deve ser curto, contextualizado e comercialmente natural.
+
+Nunca enviar mensagens genéricas como:
+
+"Olá, tudo bem?"
+
+"Você ainda tem interesse?"
+
+"Podemos ajudar?"
+
+Retome sempre a informação que estava sendo coletada.
+
+Exemplo:
+
+"Olá, Carlos! Passando para dar continuidade à sua cotação de Recife para
+Salvador. Você conseguiu confirmar a informação que ficou pendente?"
+
+IMPORTANTE:
+
+O bot apenas identifica a necessidade de follow-up.
+
+O agendamento e envio automático dos follow-ups será realizado posteriormente
+por uma camada de automação.
+
+==================================================
+26. SAÍDA OBRIGATÓRIA
 ==================================================
 
 Você DEVE responder SEMPRE em JSON válido.
@@ -783,11 +939,19 @@ Formato:
   "ready_for_seller": false,
   "customer_confirmation_required": false,
   "handoff_reason": null,
-  "seller_summary": null
+  "seller_summary": null,
+  "follow_up_required": false,
+  "follow_up_reason": null,
+  "follow_up_stage": null,
+  "follow_up_message": null,
+  "follow_up_after_minutes": null,
+  "follow_up_attempt": 0,
+  "next_pending_field": null,
+  "conversation_status": "Em atendimento"
 }
 
 ==================================================
-25. REGRAS DO JSON
+27. REGRAS DO JSON
 ==================================================
 
 "reply":
@@ -812,8 +976,9 @@ Lista dos campos importantes ainda não conhecidos.
 
 "ready_for_seller":
 
-true somente quando a oportunidade estiver suficientemente qualificada
-para o vendedor assumir.
+true somente quando a oportunidade estiver suficientemente qualificada,
+o cliente tiver confirmado os principais dados e não existir pergunta
+relevante de alto valor ainda pendente.
 
 "customer_confirmation_required":
 
@@ -828,8 +993,48 @@ Explique brevemente por que o vendedor deve assumir.
 
 Resumo estruturado para o vendedor.
 
+"follow_up_required":
+
+true somente quando o cliente estiver aguardando resposta por falta de
+interação e existir uma próxima ação de follow-up necessária.
+
+"follow_up_reason":
+
+Explique o motivo.
+
+"follow_up_stage":
+
+Informe em qual etapa da qualificação o cliente parou.
+
+"follow_up_message":
+
+Escreva a mensagem contextual que deverá ser enviada posteriormente.
+
+"follow_up_after_minutes":
+
+Informe quantos minutos devem transcorrer até a próxima tentativa quando
+essa informação puder ser determinada.
+
+"follow_up_attempt":
+
+Número da tentativa de follow-up.
+
+"next_pending_field":
+
+Campo ou informação que ainda precisa ser coletada.
+
+"conversation_status":
+
+Use, conforme o caso:
+
+- "Em atendimento"
+- "Aguardando resposta"
+- "Aguardando confirmação"
+- "Encaminhado ao vendedor"
+- "Lead — Sem Retorno"
+
 ==================================================
-26. NÃO INTERROGAR
+28. NÃO INTERROGAR
 ==================================================
 
 Nunca faça uma sequência longa de perguntas se puder avançar com uma ou
@@ -838,7 +1043,7 @@ duas perguntas relevantes.
 O cliente deve sentir que está conversando com um consultor.
 
 ==================================================
-27. OBJETIVO FINAL
+29. OBJETIVO FINAL
 ==================================================
 
 Transformar:
@@ -926,7 +1131,10 @@ function extractJson(text) {
   const lastBrace = text.lastIndexOf('}');
 
   if (firstBrace !== -1 && lastBrace !== -1) {
-    const possibleJson = text.slice(firstBrace, lastBrace + 1);
+    const possibleJson = text.slice(
+      firstBrace,
+      lastBrace + 1
+    );
 
     try {
       return JSON.parse(possibleJson);
@@ -958,13 +1166,21 @@ ESTADO ATUAL DA QUALIFICAÇÃO:
 
 ${JSON.stringify(state, null, 2)}
 
-IMPORTANTE:
+REGRAS IMPORTANTES:
+
 - Não pergunte novamente informações que já estejam preenchidas.
 - Use a mensagem atual e o histórico para identificar novas informações.
 - Atualize somente o que mudou.
 - Escolha apenas a próxima pergunta mais importante.
-- Se os dados estiverem suficientes para o vendedor, marque ready_for_seller como true.
-- Se precisar confirmar os dados antes do handoff, marque customer_confirmation_required como true.
+- Não trate nome ou e-mail como sinal de encerramento da qualificação.
+- O telefone do WhatsApp já é o telefone do contato.
+- Continue a qualificação enquanto houver informação relevante de alto valor.
+- Se os dados estiverem suficientes, primeiro solicite confirmação do resumo.
+- Somente depois da confirmação marque ready_for_seller como true.
+- Nunca marque ready_for_seller como true apenas porque nome e/ou e-mail foram
+  informados.
+- Se o cliente parar no meio da qualificação, identifique a informação pendente
+  mais relevante para eventual follow-up.
 
 HISTÓRICO RECENTE:
 
@@ -975,28 +1191,32 @@ MENSAGEM ATUAL:
 ${userText}
 `;
 
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'x-api-key': ANTHROPIC_API_KEY,
-      'anthropic-version': '2023-06-01',
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 1200,
-      system: SYSTEM_PROMPT,
-      messages: [
-        {
-          role: 'user',
-          content: contextMessage
-        }
-      ]
-    })
-  });
+  const response = await fetch(
+    'https://api.anthropic.com/v1/messages',
+    {
+      method: 'POST',
+      headers: {
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 1400,
+        system: SYSTEM_PROMPT,
+        messages: [
+          {
+            role: 'user',
+            content: contextMessage
+          }
+        ]
+      })
+    }
+  );
 
   if (!response.ok) {
     const errorText = await response.text();
+
     throw new Error(
       `Erro Anthropic ${response.status}: ${errorText}`
     );
@@ -1005,7 +1225,9 @@ ${userText}
   const data = await response.json();
 
   const rawReply =
-    data.content?.find(item => item.type === 'text')?.text || '';
+    data.content?.find(
+      item => item.type === 'text'
+    )?.text || '';
 
   const parsed = extractJson(rawReply);
 
@@ -1013,10 +1235,6 @@ ${userText}
   |--------------------------------------------------------------
   | FALLBACK
   |--------------------------------------------------------------
-  |
-  | Se Claude não retornar JSON válido, ainda respondemos ao cliente
-  | em vez de quebrar o atendimento.
-  |
   */
 
   if (!parsed) {
@@ -1033,7 +1251,15 @@ ${userText}
       ready_for_seller: false,
       customer_confirmation_required: false,
       handoff_reason: null,
-      seller_summary: null
+      seller_summary: null,
+      follow_up_required: false,
+      follow_up_reason: null,
+      follow_up_stage: null,
+      follow_up_message: null,
+      follow_up_after_minutes: null,
+      follow_up_attempt: 0,
+      next_pending_field: null,
+      conversation_status: 'Em atendimento'
     };
   }
 
@@ -1044,7 +1270,22 @@ ${userText}
   */
 
   if (parsed.state_update) {
-    deepMerge(state, parsed.state_update);
+    deepMerge(
+      state,
+      parsed.state_update
+    );
+  }
+
+  /*
+  |--------------------------------------------------------------
+  | GARANTE CONSISTÊNCIA DO HANDOFF
+  |--------------------------------------------------------------
+  */
+
+  if (parsed.ready_for_seller === true) {
+    state.oportunidade.pronto_para_vendedor = true;
+    state.atendimento.handoff = true;
+    state.atendimento.qualificacao_concluida = true;
   }
 
   /*
@@ -1062,14 +1303,58 @@ ${userText}
     reply:
       parsed.reply ||
       'Perfeito. Vou verificar as informações para você.',
-    state_update: parsed.state_update || {},
-    next_question: parsed.next_question || null,
-    missing_fields: parsed.missing_fields || [],
-    ready_for_seller: parsed.ready_for_seller === true,
+
+    state_update:
+      parsed.state_update || {},
+
+    next_question:
+      parsed.next_question || null,
+
+    missing_fields:
+      Array.isArray(parsed.missing_fields)
+        ? parsed.missing_fields
+        : [],
+
+    ready_for_seller:
+      parsed.ready_for_seller === true,
+
     customer_confirmation_required:
       parsed.customer_confirmation_required === true,
-    handoff_reason: parsed.handoff_reason || null,
-    seller_summary: parsed.seller_summary || null
+
+    handoff_reason:
+      parsed.handoff_reason || null,
+
+    seller_summary:
+      parsed.seller_summary || null,
+
+    follow_up_required:
+      parsed.follow_up_required === true,
+
+    follow_up_reason:
+      parsed.follow_up_reason || null,
+
+    follow_up_stage:
+      parsed.follow_up_stage || null,
+
+    follow_up_message:
+      parsed.follow_up_message || null,
+
+    follow_up_after_minutes:
+      typeof parsed.follow_up_after_minutes === 'number'
+        ? parsed.follow_up_after_minutes
+        : null,
+
+    follow_up_attempt:
+      typeof parsed.follow_up_attempt === 'number'
+        ? parsed.follow_up_attempt
+        : 0,
+
+    next_pending_field:
+      parsed.next_pending_field || null,
+
+    conversation_status:
+      parsed.conversation_status ||
+      'Em atendimento'
   };
 }
 
@@ -1121,7 +1406,11 @@ async function sendWhatsAppMessage(to, text) {
 |--------------------------------------------------------------------------
 */
 
-function buildSellerNote(from, userText, botResult) {
+function buildSellerNote(
+  from,
+  userText,
+  botResult
+) {
   const state = ensureState(from);
 
   return `
@@ -1153,6 +1442,21 @@ ${botResult.handoff_reason || 'Não informado'}
 
 Resumo para vendedor:
 ${botResult.seller_summary || 'Ainda não gerado'}
+
+Follow-up necessário:
+${botResult.follow_up_required}
+
+Etapa do follow-up:
+${botResult.follow_up_stage || 'Não informado'}
+
+Próximo campo pendente:
+${botResult.next_pending_field || 'Não informado'}
+
+Mensagem de follow-up:
+${botResult.follow_up_message || 'Não definida'}
+
+Status da conversa:
+${botResult.conversation_status}
 `;
 }
 
@@ -1166,9 +1470,12 @@ async function processMessage(message) {
   const from = message.from;
   const text = message.text?.body || '';
 
-  console.log(`Mensagem de ${from}: ${text}`);
+  console.log(
+    `Mensagem de ${from}: ${text}`
+  );
 
-  const isNewContact = !conversations[from];
+  const isNewContact =
+    !conversations[from];
 
   let dealPromise = null;
 
@@ -1182,14 +1489,15 @@ async function processMessage(message) {
     ensureConversation(from);
     ensureState(from);
 
-    dealPromise = createLeadDeal(from).catch(err => {
-      console.error(
-        'Erro ao criar lead no RD Station:',
-        err
-      );
+    dealPromise = createLeadDeal(from)
+      .catch(err => {
+        console.error(
+          'Erro ao criar lead no RD Station:',
+          err
+        );
 
-      return null;
-    });
+        return null;
+      });
   }
 
   try {
@@ -1199,11 +1507,19 @@ async function processMessage(message) {
     |------------------------------------------------------------
     */
 
-    const botResult = await askClaude(from, text);
+    const botResult =
+      await askClaude(
+        from,
+        text
+      );
 
     console.log(
       'Resposta estruturada do Claude:',
-      JSON.stringify(botResult, null, 2)
+      JSON.stringify(
+        botResult,
+        null,
+        2
+      )
     );
 
     /*
@@ -1224,14 +1540,17 @@ async function processMessage(message) {
     */
 
     if (isNewContact) {
-      const dealId = await dealPromise;
+      const dealId =
+        await dealPromise;
 
       if (dealId) {
-        leadDeals[from] = dealId;
+        leadDeals[from] =
+          dealId;
       }
     }
 
-    const dealId = leadDeals[from];
+    const dealId =
+      leadDeals[from];
 
     /*
     |------------------------------------------------------------
@@ -1240,13 +1559,17 @@ async function processMessage(message) {
     */
 
     if (dealId) {
-      const note = buildSellerNote(
-        from,
-        text,
-        botResult
-      );
+      const note =
+        buildSellerNote(
+          from,
+          text,
+          botResult
+        );
 
-      addNoteToDeal(dealId, note).catch(err => {
+      addNoteToDeal(
+        dealId,
+        note
+      ).catch(err => {
         console.error(
           'Erro ao adicionar anotação no RD Station:',
           err
@@ -1258,15 +1581,11 @@ async function processMessage(message) {
     |------------------------------------------------------------
     | HANDOFF
     |------------------------------------------------------------
-    |
-    | Neste momento estamos apenas registrando o handoff.
-    | Depois podemos criar a automação real:
-    |
-    | Claude → n8n → RD → vendedor
-    |
     */
 
-    if (botResult.ready_for_seller) {
+    if (
+      botResult.ready_for_seller
+    ) {
       console.log(
         `HANDOFF NECESSÁRIO para ${from}`
       );
@@ -1274,6 +1593,46 @@ async function processMessage(message) {
       console.log(
         'Resumo do vendedor:',
         botResult.seller_summary
+      );
+    }
+
+    /*
+    |------------------------------------------------------------
+    | FOLLOW-UP
+    |------------------------------------------------------------
+    |
+    | IMPORTANTE:
+    | Aqui apenas registramos a necessidade.
+    |
+    | O agendamento automático será implementado posteriormente.
+    |
+    */
+
+    if (
+      botResult.follow_up_required
+    ) {
+      console.log(
+        `FOLLOW-UP NECESSÁRIO para ${from}`
+      );
+
+      console.log(
+        'Etapa:',
+        botResult.follow_up_stage
+      );
+
+      console.log(
+        'Próximo campo:',
+        botResult.next_pending_field
+      );
+
+      console.log(
+        'Mensagem:',
+        botResult.follow_up_message
+      );
+
+      console.log(
+        'Tentativa:',
+        botResult.follow_up_attempt
       );
     }
 
@@ -1301,26 +1660,34 @@ async function processMessage(message) {
 |--------------------------------------------------------------------------
 */
 
-app.get('/webhook', (req, res) => {
-  const mode = req.query['hub.mode'];
-  const token = req.query['hub.verify_token'];
-  const challenge = req.query['hub.challenge'];
+app.get(
+  '/webhook',
+  (req, res) => {
+    const mode =
+      req.query['hub.mode'];
 
-  if (
-    mode === 'subscribe' &&
-    token === VERIFY_TOKEN
-  ) {
-    console.log(
-      'Webhook verificado com sucesso!'
-    );
+    const token =
+      req.query['hub.verify_token'];
 
-    return res
-      .status(200)
-      .send(challenge);
+    const challenge =
+      req.query['hub.challenge'];
+
+    if (
+      mode === 'subscribe' &&
+      token === VERIFY_TOKEN
+    ) {
+      console.log(
+        'Webhook verificado com sucesso!'
+      );
+
+      return res
+        .status(200)
+        .send(challenge);
+    }
+
+    return res.sendStatus(403);
   }
-
-  return res.sendStatus(403);
-});
+);
 
 /*
 |--------------------------------------------------------------------------
@@ -1328,28 +1695,39 @@ app.get('/webhook', (req, res) => {
 |--------------------------------------------------------------------------
 */
 
-app.post('/webhook', (req, res) => {
-  /*
-  | Responde imediatamente para a Meta.
-  */
-  res.sendStatus(200);
+app.post(
+  '/webhook',
+  (req, res) => {
 
-  const entry = req.body.entry?.[0];
-  const change = entry?.changes?.[0];
-  const message = change?.value?.messages?.[0];
+    /*
+    | Responde imediatamente para a Meta.
+    */
 
-  if (
-    message &&
-    !alreadyProcessed(message.id)
-  ) {
-    processMessage(message).catch(err => {
-      console.error(
-        'Erro no processamento:',
-        err
-      );
-    });
+    res.sendStatus(200);
+
+    const entry =
+      req.body.entry?.[0];
+
+    const change =
+      entry?.changes?.[0];
+
+    const message =
+      change?.value?.messages?.[0];
+
+    if (
+      message &&
+      !alreadyProcessed(message.id)
+    ) {
+      processMessage(message)
+        .catch(err => {
+          console.error(
+            'Erro no processamento:',
+            err
+          );
+        });
+    }
   }
-});
+);
 
 /*
 |--------------------------------------------------------------------------
@@ -1357,59 +1735,34 @@ app.post('/webhook', (req, res) => {
 |--------------------------------------------------------------------------
 */
 
-app.get('/', (req, res) => {
-  res.status(200).json({
-    status: 'online',
-    service: 'TGX Cargo Bot',
-    model: 'claude-sonnet-4-6',
-    services: TGX_SERVICES,
-    transport_modalities: TRANSPORT_MODALITIES
-  });
-});
+app.get(
+  '/',
+  (req, res) => {
+    res.status(200).json({
+      status: 'online',
+      service: 'TGX Cargo Bot',
+      model: 'claude-sonnet-4-6',
+      services: TGX_SERVICES,
+      transport_modalities:
+        TRANSPORT_MODALITIES
+    });
+  }
+);
+
 /*
 |--------------------------------------------------------------------------
 | SERVIDOR
 |--------------------------------------------------------------------------
 */
 
-const PORT = process.env.PORT || 3000;
+const PORT =
+  process.env.PORT || 3000;
 
-app.listen(PORT, () => {
-  console.log(
-    `TGX Bot rodando na porta ${PORT}`
-  );
-});
-### CADÊNCIA DE FOLLOW-UP — LEAD EM QUALIFICAÇÃO
-
-Quando o cliente parar de responder durante a qualificação, mantenha o contexto da conversa e retome somente a informação pendente mais relevante.
-
-Horários padrão de follow-up da TGX:
-
-- 11:00
-- 16:00
-
-Cadência:
-
-1. D0 às 11:00 — primeira tentativa;
-2. D0 às 16:00 — segunda tentativa, se ainda não houver resposta;
-3. D+1 às 11:00 — terceira tentativa;
-4. D+3 às 11:00 — quarta tentativa;
-5. D+5 às 11:00 — última tentativa ativa;
-6. Após D+5 sem resposta — pausar a conversa e classificar como "Lead — Sem Retorno".
-
-Regras:
-
-- Não enviar duas mensagens de follow-up no mesmo horário.
-- Se o cliente responder, cancelar todos os follow-ups pendentes.
-- Nunca reiniciar a qualificação.
-- Nunca repetir informações ou perguntas já respondidas.
-- Retomar sempre o ponto exato onde a conversa parou.
-- Não enviar follow-up após o cliente pedir para aguardar ou não receber mensagens.
-- Não enviar follow-up se a oportunidade já tiver sido encaminhada ao vendedor.
-- Não enviar mensagens fora do horário comercial definido pela TGX.
-- Se o follow-up cair em domingo ou feriado, transferir para o próximo dia útil.
-- O horário deve considerar o fuso de Recife, Brasil — America/Recife.
-
-Se o cliente parar de responder depois das 16:00, não enviar outra mensagem no mesmo dia. Programar o próximo follow-up para 11:00 do próximo dia útil.
-
-O follow-up deve ser contextualizado, curto e comercialmente natural.
+app.listen(
+  PORT,
+  () => {
+    console.log(
+      `TGX Bot rodando na porta ${PORT}`
+    );
+  }
+);
