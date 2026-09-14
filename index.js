@@ -9,23 +9,28 @@ const {
   updateDealStage
 } = require('./rdstation');
 
-const VERIFY_TOKEN = process.env.VERIFY_TOKEN || 'minha_verificacao_2026';
-const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN;
-const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
-const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+const VERIFY_TOKEN =
+  process.env.VERIFY_TOKEN || 'minha_verificacao_2026';
 
-const HUMAN_WHATSAPP = '+55 (81) 99253-9017';
-const HUMAN_HOURS = 'Segunda a sexta, 09:00 às 17:00';
+const WHATSAPP_TOKEN =
+  process.env.WHATSAPP_TOKEN;
+
+const PHONE_NUMBER_ID =
+  process.env.PHONE_NUMBER_ID;
+
+const ANTHROPIC_API_KEY =
+  process.env.ANTHROPIC_API_KEY;
+
+const HUMAN_WHATSAPP =
+  '+55 (81) 99253-9017';
+
+const HUMAN_HOURS =
+  'Segunda a sexta, 09:00 às 17:00';
 
 /*
 |--------------------------------------------------------------------------
 | MEMÓRIA TEMPORÁRIA
 |--------------------------------------------------------------------------
-|
-| ATENÇÃO:
-| Esta memória existe somente enquanto o processo Node.js estiver rodando.
-| Depois podemos migrar para Supabase/Redis/PostgreSQL.
-|
 */
 
 const conversations = {};
@@ -50,12 +55,37 @@ function alreadyProcessed(messageId) {
   processedMessageIds.add(messageId);
 
   if (processedMessageIds.size > 500) {
-    const oldest = processedMessageIds.values().next().value;
+    const oldest =
+      processedMessageIds.values().next().value;
+
     processedMessageIds.delete(oldest);
   }
 
   return false;
 }
+
+/*
+|--------------------------------------------------------------------------
+| ESTÁGIOS RD STATION
+|--------------------------------------------------------------------------
+*/
+
+const RD_STAGES = {
+  semContato:
+    process.env.RDSTATION_STAGE_SEM_CONTATO,
+
+  contatoFeito:
+    process.env.RDSTATION_STAGE_CONTATO_FEITO,
+
+  identificacao:
+    process.env.RDSTATION_STAGE_IDENTIFICACAO,
+
+  apresentacao:
+    process.env.RDSTATION_STAGE_APRESENTACAO,
+
+  proposta:
+    process.env.RDSTATION_STAGE_PROPOSTA
+};
 
 /*
 |--------------------------------------------------------------------------
@@ -1096,7 +1126,8 @@ function deepMerge(target, source) {
 
 function ensureState(from) {
   if (!leadStates[from]) {
-    leadStates[from] = createInitialState();
+    leadStates[from] =
+      createInitialState();
   }
 
   return leadStates[from];
@@ -1112,6 +1143,23 @@ function ensureConversation(from) {
 
 /*
 |--------------------------------------------------------------------------
+| GARANTE TELEFONE DO WHATSAPP
+|--------------------------------------------------------------------------
+*/
+
+function ensureContactPhone(from) {
+  const state =
+    ensureState(from);
+
+  if (from) {
+    state.contato.telefone = from;
+  }
+
+  return state;
+}
+
+/*
+|--------------------------------------------------------------------------
 | LIMPA JSON RETORNADO PELO CLAUDE
 |--------------------------------------------------------------------------
 */
@@ -1123,25 +1171,39 @@ function extractJson(text) {
     return JSON.parse(text);
   } catch (_) {}
 
-  const fenced = text.match(/```json\s*([\s\S]*?)\s*```/i);
+  const fenced =
+    text.match(
+      /```json\s*([\s\S]*?)\s*```/i
+    );
 
   if (fenced) {
     try {
-      return JSON.parse(fenced[1]);
+      return JSON.parse(
+        fenced[1]
+      );
     } catch (_) {}
   }
 
-  const firstBrace = text.indexOf('{');
-  const lastBrace = text.lastIndexOf('}');
+  const firstBrace =
+    text.indexOf('{');
 
-  if (firstBrace !== -1 && lastBrace !== -1) {
-    const possibleJson = text.slice(
-      firstBrace,
-      lastBrace + 1
-    );
+  const lastBrace =
+    text.lastIndexOf('}');
+
+  if (
+    firstBrace !== -1 &&
+    lastBrace !== -1
+  ) {
+    const possibleJson =
+      text.slice(
+        firstBrace,
+        lastBrace + 1
+      );
 
     try {
-      return JSON.parse(possibleJson);
+      return JSON.parse(
+        possibleJson
+      );
     } catch (_) {}
   }
 
@@ -1150,25 +1212,163 @@ function extractJson(text) {
 
 /*
 |--------------------------------------------------------------------------
+| DETERMINA ESTÁGIO DO RD
+|--------------------------------------------------------------------------
+|
+| O Claude NÃO decide o estágio do CRM.
+|
+| Regra:
+|
+| Novo contato:
+| Contato feito
+|
+| Necessidade/serviço identificado:
+| Identificação do interesse
+|
+| Apresentação:
+| será feita posteriormente pelo processo comercial
+|
+| Proposta:
+| será feita posteriormente pelo processo comercial
+|
+|--------------------------------------------------------------------------
+*/
+
+function getDesiredRdStage(
+  state,
+  botResult,
+  isNewContact
+) {
+  if (
+    isNewContact &&
+    RD_STAGES.contatoFeito
+  ) {
+    return RD_STAGES.contatoFeito;
+  }
+
+  const serviceIdentified =
+    state.atendimento
+      .servico_identificado === true ||
+    Boolean(
+      state.oportunidade.servico
+    );
+
+  const interestIdentified =
+    serviceIdentified ||
+    Boolean(
+      state.oportunidade.origem?.cep
+    ) ||
+    Boolean(
+      state.oportunidade.destino?.cep
+    ) ||
+    Boolean(
+      state.oportunidade.carga?.tipo
+    ) ||
+    Boolean(
+      state.oportunidade.carga?.peso_total
+    );
+
+  if (
+    interestIdentified &&
+    RD_STAGES.identificacao
+  ) {
+    return RD_STAGES.identificacao;
+  }
+
+  if (
+    RD_STAGES.contatoFeito
+  ) {
+    return RD_STAGES.contatoFeito;
+  }
+
+  return null;
+}
+
+/*
+|--------------------------------------------------------------------------
+| ATUALIZA ESTÁGIO DO RD
+|--------------------------------------------------------------------------
+*/
+
+async function updateRdStageIfNeeded(
+  from,
+  botResult,
+  isNewContact
+) {
+  const dealId =
+    leadDeals[from];
+
+  if (!dealId) {
+    return;
+  }
+
+  const state =
+    ensureState(from);
+
+  const desiredStage =
+    getDesiredRdStage(
+      state,
+      botResult,
+      isNewContact
+    );
+
+  if (!desiredStage) {
+    return;
+  }
+
+  /*
+  |--------------------------------------------------------------
+  | NÃO MOVEMOS PARA APRESENTAÇÃO OU PROPOSTA AUTOMATICAMENTE
+  |--------------------------------------------------------------
+  */
+
+  if (
+    desiredStage ===
+      RD_STAGES.apresentacao ||
+    desiredStage ===
+      RD_STAGES.proposta
+  ) {
+    return;
+  }
+
+  await updateDealStage(
+    dealId,
+    desiredStage
+  );
+}
+
+/*
+|--------------------------------------------------------------------------
 | CLAUDE
 |--------------------------------------------------------------------------
 */
 
-async function askClaude(from, userText) {
-  const state = ensureState(from);
-  const conversation = ensureConversation(from);
+async function askClaude(
+  from,
+  userText
+) {
+  const state =
+    ensureContactPhone(from);
+
+  const conversation =
+    ensureConversation(from);
 
   conversation.push({
     role: 'user',
     content: userText
   });
 
-  const history = conversation.slice(-12);
+  const history =
+    conversation.slice(-12);
 
   const contextMessage = `
 ESTADO ATUAL DA QUALIFICAÇÃO:
 
-${JSON.stringify(state, null, 2)}
+${JSON.stringify(
+  state,
+  null,
+  2
+)}
 
 REGRAS IMPORTANTES:
 
@@ -1188,52 +1388,74 @@ REGRAS IMPORTANTES:
 
 HISTÓRICO RECENTE:
 
-${JSON.stringify(history, null, 2)}
+${JSON.stringify(
+  history,
+  null,
+  2
+)}
 
 MENSAGEM ATUAL:
 
 ${userText}
 `;
 
-  const response = await fetch(
-    'https://api.anthropic.com/v1/messages',
-    {
-      method: 'POST',
-      headers: {
-        'x-api-key': ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01',
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 1400,
-        system: SYSTEM_PROMPT,
-        messages: [
-          {
-            role: 'user',
-            content: contextMessage
-          }
-        ]
-      })
-    }
-  );
+  const response =
+    await fetch(
+      'https://api.anthropic.com/v1/messages',
+      {
+        method: 'POST',
+        headers: {
+          'x-api-key':
+            ANTHROPIC_API_KEY,
+
+          'anthropic-version':
+            '2023-06-01',
+
+          'Content-Type':
+            'application/json'
+        },
+
+        body: JSON.stringify({
+          model:
+            'claude-sonnet-4-6',
+
+          max_tokens:
+            1400,
+
+          system:
+            SYSTEM_PROMPT,
+
+          messages: [
+            {
+              role: 'user',
+              content:
+                contextMessage
+            }
+          ]
+        })
+      }
+    );
 
   if (!response.ok) {
-    const errorText = await response.text();
+    const errorText =
+      await response.text();
 
     throw new Error(
       `Erro Anthropic ${response.status}: ${errorText}`
     );
   }
 
-  const data = await response.json();
+  const data =
+    await response.json();
 
   const rawReply =
     data.content?.find(
-      item => item.type === 'text'
+      item =>
+        item.type === 'text'
     )?.text || '';
 
-  const parsed = extractJson(rawReply);
+  const parsed =
+    extractJson(rawReply);
 
   /*
   |--------------------------------------------------------------
@@ -1263,7 +1485,8 @@ ${userText}
       follow_up_after_minutes: null,
       follow_up_attempt: 0,
       next_pending_field: null,
-      conversation_status: 'Em atendimento'
+      conversation_status:
+        'Em atendimento'
     };
   }
 
@@ -1282,25 +1505,110 @@ ${userText}
 
   /*
   |--------------------------------------------------------------
-  | GARANTE CONSISTÊNCIA DO HANDOFF
+  | TELEFONE É SEMPRE O WHATSAPP
   |--------------------------------------------------------------
   */
 
-  if (parsed.ready_for_seller === true) {
-    state.oportunidade.pronto_para_vendedor = true;
-    state.atendimento.handoff = true;
-    state.atendimento.qualificacao_concluida = true;
+  state.contato.telefone =
+    from;
+
+  /*
+  |--------------------------------------------------------------
+  | CONSISTÊNCIA DO HANDOFF
+  |--------------------------------------------------------------
+  */
+
+  if (
+    parsed.ready_for_seller === true
+  ) {
+    state.oportunidade
+      .pronto_para_vendedor = true;
+
+    state.atendimento.handoff =
+      true;
+
+    state.atendimento
+      .qualificacao_concluida = true;
+
+    state.atendimento
+      .conversation_status =
+      'Encaminhado ao vendedor';
+
+    state.atendimento
+      .aguardando_confirmacao =
+      false;
   }
 
   /*
   |--------------------------------------------------------------
-  | GUARDA O ESTADO NA CONVERSA
+  | CONSISTÊNCIA DO FOLLOW-UP
+  |--------------------------------------------------------------
+  */
+
+  if (
+    parsed.follow_up_required === true
+  ) {
+    state.atendimento
+      .follow_up_required = true;
+
+    state.atendimento
+      .follow_up_reason =
+      parsed.follow_up_reason ||
+      null;
+
+    state.atendimento
+      .follow_up_stage =
+      parsed.follow_up_stage ||
+      null;
+
+    state.atendimento
+      .follow_up_message =
+      parsed.follow_up_message ||
+      null;
+
+    state.atendimento
+      .follow_up_after_minutes =
+      typeof parsed.follow_up_after_minutes ===
+      'number'
+        ? parsed.follow_up_after_minutes
+        : null;
+
+    state.atendimento
+      .follow_up_attempt =
+      typeof parsed.follow_up_attempt ===
+      'number'
+        ? parsed.follow_up_attempt
+        : 0;
+
+    state.atendimento
+      .next_pending_field =
+      parsed.next_pending_field ||
+      null;
+  }
+
+  /*
+  |--------------------------------------------------------------
+  | SERVIÇO IDENTIFICADO
+  |--------------------------------------------------------------
+  */
+
+  if (
+    state.oportunidade.servico
+  ) {
+    state.atendimento
+      .servico_identificado = true;
+  }
+
+  /*
+  |--------------------------------------------------------------
+  | GUARDA ESTADO NA CONVERSA
   |--------------------------------------------------------------
   */
 
   conversation.push({
     role: 'assistant',
-    content: parsed.reply || ''
+    content:
+      parsed.reply || ''
   });
 
   return {
@@ -1312,10 +1620,13 @@ ${userText}
       parsed.state_update || {},
 
     next_question:
-      parsed.next_question || null,
+      parsed.next_question ||
+      null,
 
     missing_fields:
-      Array.isArray(parsed.missing_fields)
+      Array.isArray(
+        parsed.missing_fields
+      )
         ? parsed.missing_fields
         : [],
 
@@ -1326,35 +1637,43 @@ ${userText}
       parsed.customer_confirmation_required === true,
 
     handoff_reason:
-      parsed.handoff_reason || null,
+      parsed.handoff_reason ||
+      null,
 
     seller_summary:
-      parsed.seller_summary || null,
+      parsed.seller_summary ||
+      null,
 
     follow_up_required:
       parsed.follow_up_required === true,
 
     follow_up_reason:
-      parsed.follow_up_reason || null,
+      parsed.follow_up_reason ||
+      null,
 
     follow_up_stage:
-      parsed.follow_up_stage || null,
+      parsed.follow_up_stage ||
+      null,
 
     follow_up_message:
-      parsed.follow_up_message || null,
+      parsed.follow_up_message ||
+      null,
 
     follow_up_after_minutes:
-      typeof parsed.follow_up_after_minutes === 'number'
+      typeof parsed.follow_up_after_minutes ===
+      'number'
         ? parsed.follow_up_after_minutes
         : null,
 
     follow_up_attempt:
-      typeof parsed.follow_up_attempt === 'number'
+      typeof parsed.follow_up_attempt ===
+      'number'
         ? parsed.follow_up_attempt
         : 0,
 
     next_pending_field:
-      parsed.next_pending_field || null,
+      parsed.next_pending_field ||
+      null,
 
     conversation_status:
       parsed.conversation_status ||
@@ -1368,26 +1687,39 @@ ${userText}
 |--------------------------------------------------------------------------
 */
 
-async function sendWhatsAppMessage(to, text) {
-  const response = await fetch(
-    `https://graph.facebook.com/v21.0/${PHONE_NUMBER_ID}/messages`,
-    {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${WHATSAPP_TOKEN}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        messaging_product: 'whatsapp',
-        to: to,
-        text: {
-          body: text
-        }
-      })
-    }
-  );
+async function sendWhatsAppMessage(
+  to,
+  text
+) {
+  const response =
+    await fetch(
+      `https://graph.facebook.com/v21.0/${PHONE_NUMBER_ID}/messages`,
+      {
+        method: 'POST',
 
-  const result = await response.json();
+        headers: {
+          Authorization:
+            `Bearer ${WHATSAPP_TOKEN}`,
+
+          'Content-Type':
+            'application/json'
+        },
+
+        body: JSON.stringify({
+          messaging_product:
+            'whatsapp',
+
+          to: to,
+
+          text: {
+            body: text
+          }
+        })
+      }
+    );
+
+  const result =
+    await response.json();
 
   console.log(
     'Status envio:',
@@ -1415,22 +1747,62 @@ function buildSellerNote(
   userText,
   botResult
 ) {
-  const state = ensureState(from);
+  const state =
+    ensureContactPhone(from);
+
+  /*
+  |--------------------------------------------------------------
+  | EVITA CONTRADIÇÃO SOBRE MODALIDADE
+  |--------------------------------------------------------------
+  */
+
+  const oportunidadeNote =
+    JSON.parse(
+      JSON.stringify(
+        state.oportunidade
+      )
+    );
+
+  if (
+    oportunidadeNote.servico ===
+      'Transporte' &&
+    !oportunidadeNote
+      .modalidade_transporte
+  ) {
+    oportunidadeNote.modalidade_transporte =
+      'A validar';
+  }
 
   return `
 QUALIFICAÇÃO COMERCIAL TGX
 
 Empresa:
-${JSON.stringify(state.empresa, null, 2)}
+${JSON.stringify(
+  state.empresa,
+  null,
+  2
+)}
 
 Contato:
-${JSON.stringify(state.contato, null, 2)}
+${JSON.stringify(
+  state.contato,
+  null,
+  2
+)}
 
 Oportunidade:
-${JSON.stringify(state.oportunidade, null, 2)}
+${JSON.stringify(
+  oportunidadeNote,
+  null,
+  2
+)}
 
 Atendimento:
-${JSON.stringify(state.atendimento, null, 2)}
+${JSON.stringify(
+  state.atendimento,
+  null,
+  2
+)}
 
 Última mensagem do cliente:
 ${userText}
@@ -1470,13 +1842,27 @@ ${botResult.conversation_status}
 |--------------------------------------------------------------------------
 */
 
-async function processMessage(message) {
-  const from = message.from;
-  const text = message.text?.body || '';
+async function processMessage(
+  message
+) {
+  const from =
+    message.from;
+
+  const text =
+    message.text?.body || '';
 
   console.log(
     `Mensagem de ${from}: ${text}`
   );
+
+  /*
+  |--------------------------------------------------------------
+  | GARANTE ESTADO + TELEFONE
+  |--------------------------------------------------------------
+  */
+
+  const state =
+    ensureContactPhone(from);
 
   const isNewContact =
     !conversations[from];
@@ -1491,10 +1877,18 @@ async function processMessage(message) {
 
   if (isNewContact) {
     ensureConversation(from);
-    ensureState(from);
 
-    dealPromise = createLeadDeal(from)
-      .catch(err => {
+    /*
+    |------------------------------------------------------------
+    | Primeiro estágio:
+    | CONTATO FEITO
+    |------------------------------------------------------------
+    */
+
+    dealPromise =
+      createLeadDeal(
+        from
+      ).catch(err => {
         console.error(
           'Erro ao criar lead no RD Station:',
           err
@@ -1579,6 +1973,18 @@ async function processMessage(message) {
           err
         );
       });
+
+      /*
+      |----------------------------------------------------------
+      | ATUALIZA ESTÁGIO
+      |----------------------------------------------------------
+      */
+
+      await updateRdStageIfNeeded(
+        from,
+        botResult,
+        isNewContact
+      );
     }
 
     /*
@@ -1604,12 +2010,6 @@ async function processMessage(message) {
     |------------------------------------------------------------
     | FOLLOW-UP
     |------------------------------------------------------------
-    |
-    | IMPORTANTE:
-    | Aqui apenas registramos a necessidade.
-    |
-    | O agendamento automático será implementado posteriormente.
-    |
     */
 
     if (
@@ -1671,10 +2071,14 @@ app.get(
       req.query['hub.mode'];
 
     const token =
-      req.query['hub.verify_token'];
+      req.query[
+        'hub.verify_token'
+      ];
 
     const challenge =
-      req.query['hub.challenge'];
+      req.query[
+        'hub.challenge'
+      ];
 
     if (
       mode === 'subscribe' &&
@@ -1720,15 +2124,18 @@ app.post(
 
     if (
       message &&
-      !alreadyProcessed(message.id)
+      !alreadyProcessed(
+        message.id
+      )
     ) {
-      processMessage(message)
-        .catch(err => {
-          console.error(
-            'Erro no processamento:',
-            err
-          );
-        });
+      processMessage(
+        message
+      ).catch(err => {
+        console.error(
+          'Erro no processamento:',
+          err
+        );
+      });
     }
   }
 );
@@ -1746,10 +2153,49 @@ app.get(
       status: 'online',
       service: 'TGX Cargo Bot',
       model: 'claude-sonnet-4-6',
-      services: TGX_SERVICES,
+      services:
+        TGX_SERVICES,
       transport_modalities:
         TRANSPORT_MODALITIES
     });
+  }
+);
+
+/*
+|--------------------------------------------------------------------------
+| CONSULTA TEMPORÁRIA DOS ESTÁGIOS RD
+|--------------------------------------------------------------------------
+|
+| Manteremos por enquanto para facilitar testes.
+| Depois podemos remover.
+|
+|--------------------------------------------------------------------------
+*/
+
+app.get(
+  '/rd-stages',
+  async (req, res) => {
+    try {
+      const response =
+        await fetch(
+          `https://crm.rdstation.com/api/v1/deal_stages?token=${process.env.RDSTATION_CRM_TOKEN}`
+        );
+
+      const data =
+        await response.json();
+
+      res
+        .status(response.status)
+        .json(data);
+
+    } catch (err) {
+      res
+        .status(500)
+        .json({
+          error:
+            err.message
+        });
+    }
   }
 );
 
@@ -1761,20 +2207,6 @@ app.get(
 
 const PORT =
   process.env.PORT || 3000;
-
-app.get('/rd-stages', async (req, res) => {
-  try {
-    const response = await fetch(
-      `https://crm.rdstation.com/api/v1/deal_stages?token=${process.env.RDSTATION_CRM_TOKEN}`
-    );
-
-    const data = await response.json();
-
-    res.status(response.status).json(data);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
 
 app.listen(
   PORT,
