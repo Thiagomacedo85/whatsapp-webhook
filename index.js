@@ -1366,7 +1366,6 @@ app.get('/', (req, res) => {
     transport_modalities: TRANSPORT_MODALITIES
   });
 });
-
 /*
 |--------------------------------------------------------------------------
 | SERVIDOR
