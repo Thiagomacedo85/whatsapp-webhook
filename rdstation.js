@@ -117,5 +117,56 @@ async function addNoteToDeal(dealId, text) {
     return null;
   }
 }
+/**
+ * Atualiza a etapa de uma negociação no RD Station CRM.
+ * Nunca lança erro para não interromper o atendimento do WhatsApp.
+ */
+async function updateDealStage(dealId, stageId) {
+  if (!RD_TOKEN || !dealId || !stageId) {
+    return null;
+  }
 
-module.exports = { createLeadDeal, addNoteToDeal };
+  try {
+    const response = await fetch(
+      `${RD_BASE_URL}/deals/${dealId}?token=${RD_TOKEN}`,
+      {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          deal_stage_id: stageId
+        })
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      console.error(
+        'RD Station: erro ao atualizar etapa:',
+        response.status,
+        JSON.stringify(data)
+      );
+      return null;
+    }
+
+    console.log(
+      `RD Station: etapa da negociação ${dealId} atualizada para ${stageId}`
+    );
+
+    return data;
+  } catch (err) {
+    console.error(
+      'RD Station: falha ao atualizar etapa:',
+      err.message
+    );
+    return null;
+  }
+}
+
+module.exports = {
+  createLeadDeal,
+  addNoteToDeal,
+  updateDealStage
+};
