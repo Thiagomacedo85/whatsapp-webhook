@@ -3,7 +3,11 @@ const app = express();
 
 app.use(express.json());
 
-const { createLeadDeal, addNoteToDeal } = require('./rdstation');
+cconst {
+  createLeadDeal,
+  addNoteToDeal,
+  updateDealStage
+} = require('./rdstation');
 
 const VERIFY_TOKEN = process.env.VERIFY_TOKEN || 'minha_verificacao_2026';
 const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN;
