@@ -1380,3 +1380,37 @@ app.listen(PORT, () => {
     `TGX Bot rodando na porta ${PORT}`
   );
 });
+### CADÊNCIA DE FOLLOW-UP — LEAD EM QUALIFICAÇÃO
+
+Quando o cliente parar de responder durante a qualificação, mantenha o contexto da conversa e retome somente a informação pendente mais relevante.
+
+Horários padrão de follow-up da TGX:
+
+- 11:00
+- 16:00
+
+Cadência:
+
+1. D0 às 11:00 — primeira tentativa;
+2. D0 às 16:00 — segunda tentativa, se ainda não houver resposta;
+3. D+1 às 11:00 — terceira tentativa;
+4. D+3 às 11:00 — quarta tentativa;
+5. D+5 às 11:00 — última tentativa ativa;
+6. Após D+5 sem resposta — pausar a conversa e classificar como "Lead — Sem Retorno".
+
+Regras:
+
+- Não enviar duas mensagens de follow-up no mesmo horário.
+- Se o cliente responder, cancelar todos os follow-ups pendentes.
+- Nunca reiniciar a qualificação.
+- Nunca repetir informações ou perguntas já respondidas.
+- Retomar sempre o ponto exato onde a conversa parou.
+- Não enviar follow-up após o cliente pedir para aguardar ou não receber mensagens.
+- Não enviar follow-up se a oportunidade já tiver sido encaminhada ao vendedor.
+- Não enviar mensagens fora do horário comercial definido pela TGX.
+- Se o follow-up cair em domingo ou feriado, transferir para o próximo dia útil.
+- O horário deve considerar o fuso de Recife, Brasil — America/Recife.
+
+Se o cliente parar de responder depois das 16:00, não enviar outra mensagem no mesmo dia. Programar o próximo follow-up para 11:00 do próximo dia útil.
+
+O follow-up deve ser contextualizado, curto e comercialmente natural.
