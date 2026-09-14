@@ -1758,6 +1758,20 @@ app.get(
 const PORT =
   process.env.PORT || 3000;
 
+app.get('/rd-stages', async (req, res) => {
+  try {
+    const response = await fetch(
+      `https://crm.rdstation.com/api/v1/deal_stages?token=${process.env.RDSTATION_CRM_TOKEN}`
+    );
+
+    const data = await response.json();
+
+    res.status(response.status).json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.listen(
   PORT,
   () => {
