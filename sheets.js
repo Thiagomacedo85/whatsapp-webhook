@@ -76,8 +76,15 @@ function normalizePhone(phone) {
   if (!phone) return '';
   let clean = String(phone).replace(/\D/g, '');
 
-  if (clean.length === 13 && clean.startsWith('55')) {
+  // Remove o DDI 55 se estiver presente (12 ou 13 dígitos)
+  if (clean.startsWith('55')) {
     clean = clean.slice(2);
+  }
+
+  // Se sobrar 10 dígitos, é porque o WhatsApp enviou SEM o 9 do celular
+  // Ex: 8191842731 -> insere o 9 após o DDD -> 81991842731
+  if (clean.length === 10 && clean.startsWith('8')) {
+    clean = clean.slice(0, 2) + '9' + clean.slice(2);
   }
 
   return clean;
