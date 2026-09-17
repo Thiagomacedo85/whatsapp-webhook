@@ -1,24 +1,16 @@
-const { google } = require('googleapis');
-
 /*
 |--------------------------------------------------------------------------
 | CONFIGURAÇÃO DAS PLANILHAS
 |--------------------------------------------------------------------------
 */
 
-const SPREADSHEET_CADASTRO_ID =
-  process.env.SPREADSHEET_CADASTRO_ID;
+const APPS_SCRIPT_URL = process.env.APPS_SCRIPT_URL;
 
-const SPREADSHEET_ORCAMENTO_ID =
-  process.env.SPREADSHEET_ORCAMENTO_ID;
+const SPREADSHEET_CADASTRO_ID = process.env.SPREADSHEET_CADASTRO_ID;
+const SPREADSHEET_ORCAMENTO_ID = process.env.SPREADSHEET_ORCAMENTO_ID;
 
-const CADASTRO_SHEET_NAME =
-  process.env.CADASTRO_SHEET_NAME ||
-  'Respostas ao formulário 1';
-
-const ORCAMENTO_SHEET_NAME =
-  process.env.ORCAMENTO_SHEET_NAME ||
-  'Respostas ao formulário 1';
+const CADASTRO_SHEET_NAME = process.env.CADASTRO_SHEET_NAME || 'Respostas ao formulário 1';
+const ORCAMENTO_SHEET_NAME = process.env.ORCAMENTO_SHEET_NAME || 'Respostas ao formulário 1';
 
 /*
 |--------------------------------------------------------------------------
@@ -65,65 +57,6 @@ const ORCAMENTO_ID_CANDIDATES = [
   'id_da_solicitacao', 'id_solicitacao', 'id_do_orcamento',
   'id_orcamento', 'numero_da_solicitacao', 'id', 'codigo', 'numero'
 ];
-
-/*
-|--------------------------------------------------------------------------
-| CLIENTE GOOGLE SHEETS
-|--------------------------------------------------------------------------
-*/
-
-let sheetsClient = null;
-const sheetNameCache = new Map();
-
-function getSheetsClient() {
-  if (sheetsClient) return sheetsClient;
-
-  const rawBase64 =
-    process.env.GOOGLE_SERVICE_ACCOUNT_BASE64;
-
-  const rawJson =
-    process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
-
-  let credentials;
-
-  if (rawBase64) {
-    try {
-      credentials = JSON.parse(
-        Buffer.from(rawBase64, 'base64').toString('utf8')
-      );
-    } catch (e) {
-      throw new Error(
-        'Falha ao ler credenciais do Google (base64): ' + e.message
-      );
-    }
-  } else if (rawJson) {
-    try {
-      credentials = JSON.parse(rawJson);
-    } catch (e) {
-      throw new Error(
-        'Falha ao ler credenciais do Google (JSON): ' + e.message
-      );
-    }
-  } else {
-    throw new Error(
-      'Credenciais do Google não configuradas.'
-    );
-  }
-
-  const auth = new google.auth.GoogleAuth({
-    credentials,
-    scopes: [
-      'https://www.googleapis.com/auth/spreadsheets.readonly'
-    ]
-  });
-
-  sheetsClient = google.sheets({
-    version: 'v4',
-    auth
-  });
-
-  return sheetsClient;
-}
 
 /*
 |--------------------------------------------------------------------------
@@ -183,51 +116,6 @@ function findInRow(row, header, candidates) {
   return row[idx] ?? '';
 }
 
-async function resolveSheetName(spreadsheetId, preferredName) {
-  if (sheetNameCache.has(spreadsheetId)) {
-    return sheetNameCache.get(spreadsheetId);
-  }
-
-  let resolved = preferredName;
-
-  try {
-    const client = getSheetsClient();
-    const meta = await client.spreadsheets.get({ spreadsheetId });
-    const names = (meta.data.sheets || [])
-      .map(s => s.properties.title);
-
-    if (preferredName && names.includes(preferredName)) {
-      resolved = preferredName;
-    } else if (names.length) {
-      resolved = names[0];
-    }
-  } catch (e) {
-    // mantém o nome preferido se não conseguir ler os metadados
-  }
-
-  sheetNameCache.set(spreadsheetId, resolved);
-  return resolved;
-}
-
-async function readSheetRows(spreadsheetId, preferredName) {
-  if (!spreadsheetId) {
-    throw new Error('ID da planilha não configurado.');
-  }
-
-  const client = getSheetsClient();
-  const sheetName = await resolveSheetName(
-    spreadsheetId,
-    preferredName
-  );
-
-  const res = await client.spreadsheets.values.get({
-    spreadsheetId,
-    range: `${sheetName}!A:Z`
-  });
-
-  return res.data.values || [];
-}
-
 function buildClientRecord(row, header) {
   return {
     id: findInRow(row, header, ID_COLUMN_CANDIDATES),
@@ -245,15 +133,47 @@ function buildClientRecord(row, header) {
 
 /*
 |--------------------------------------------------------------------------
+| CHAMADAS À API DO APPS SCRIPT
+|--------------------------------------------------------------------------
+*/
+
+async function callAppsScript(action, payload = {}) {
+  if (!APPS_SCRIPT_URL) {
+    throw new Error('APPS_SCRIPT_URL não configurada nas variáveis de ambiente');
+  }
+
+  const response = await fetch(APPS_SCRIPT_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action, ...payload })
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Erro Apps Script ${response.status}: ${text}`);
+  }
+
+  return response.json();
+}
+
+async function readSheetRows(spreadsheetId, sheetName) {
+  const result = await callAppsScript('readSheet', {
+    spreadsheetId,
+    sheetName
+  });
+
+  // Espera que o Apps Script retorne { rows: [[...], [...], ...] }
+  return result.rows || [];
+}
+
+/*
+|--------------------------------------------------------------------------
 | BUSCAS
 |--------------------------------------------------------------------------
 */
 
 async function findClientById(id) {
-  const rows = await readSheetRows(
-    SPREADSHEET_CADASTRO_ID,
-    CADASTRO_SHEET_NAME
-  );
+  const rows = await readSheetRows(SPREADSHEET_CADASTRO_ID, CADASTRO_SHEET_NAME);
 
   if (rows.length < 2) return null;
 
@@ -276,10 +196,7 @@ async function findClientById(id) {
 }
 
 async function findClientByCpfCnpj(value) {
-  const rows = await readSheetRows(
-    SPREADSHEET_CADASTRO_ID,
-    CADASTRO_SHEET_NAME
-  );
+  const rows = await readSheetRows(SPREADSHEET_CADASTRO_ID, CADASTRO_SHEET_NAME);
 
   if (rows.length < 2) return null;
 
@@ -309,10 +226,7 @@ async function findClientByCpfCnpj(value) {
 }
 
 async function findClientByPhone(phone) {
-  const rows = await readSheetRows(
-    SPREADSHEET_CADASTRO_ID,
-    CADASTRO_SHEET_NAME
-  );
+  const rows = await readSheetRows(SPREADSHEET_CADASTRO_ID, CADASTRO_SHEET_NAME);
 
   if (rows.length < 2) return null;
 
@@ -335,10 +249,7 @@ async function findClientByPhone(phone) {
 }
 
 async function findQuoteRequest({ id, cpf, cnpj, phone }) {
-  const rows = await readSheetRows(
-    SPREADSHEET_ORCAMENTO_ID,
-    ORCAMENTO_SHEET_NAME
-  );
+  const rows = await readSheetRows(SPREADSHEET_ORCAMENTO_ID, ORCAMENTO_SHEET_NAME);
 
   if (rows.length < 2) return null;
 
@@ -392,4 +303,3 @@ module.exports = {
   normalizeValue,
   normalizePhone
 };
-
