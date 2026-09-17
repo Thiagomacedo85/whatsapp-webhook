@@ -14,7 +14,8 @@ const {
   findClientByCpfCnpj,
   findClientByPhone,
   findQuoteRequest,
-  normalizeValue
+  normalizeText,
+  normalizePhone
 } = require('./sheets');
 
 const VERIFY_TOKEN = process.env.VERIFY_TOKEN || 'minha_verificacao_2026';
@@ -341,7 +342,7 @@ function recordExchange(from, userText, assistantReply) {
 */
 
 function isNotKnowingId(text) {
-  const t = normalizeValue(text);
+  const t = normalizeText(text);
   if (!t) return false;
   if (t === 'nao' || t === 'n') return true;
 
@@ -355,7 +356,7 @@ function isNotKnowingId(text) {
 }
 
 function mentionsCpfCnpj(text) {
-  const t = normalizeValue(text);
+  const t = normalizeText(text);
   return t.includes('cpf') || t.includes('cnpj');
 }
 
@@ -394,7 +395,7 @@ function extractIdCandidate(text) {
 }
 
 function isFillConfirmation(text) {
-  const t = normalizeValue(text);
+  const t = normalizeText(text);
   if (!t) return false;
 
   const negatives = [
@@ -603,7 +604,7 @@ async function handleCadastroStep(from, text, state) {
   let client = null;
 
   try {
-    client = await findClientByPhone(from);
+    client = await findClientByPhone(normalizePhone(from));
   } catch (err) {
     console.error('Erro ao buscar cadastro por telefone:', err);
 
@@ -659,7 +660,7 @@ async function handleQuoteConfirmation(from, text, state) {
       id: state.cliente.id,
       cpf: state.cliente.cpf,
       cnpj: state.cliente.cnpj,
-      phone: from
+      phone: normalizePhone(from)
     });
   } catch (err) {
     console.error('Erro ao buscar solicitação de orçamento:', err);
