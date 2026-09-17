@@ -1,8 +1,5 @@
 const APPS_SCRIPT_URL = process.env.APPS_SCRIPT_URL;
 
-/**
- * Busca cliente por ID
- */
 async function findClientById(id) {
   const response = await fetch(APPS_SCRIPT_URL, {
     method: 'POST',
@@ -17,9 +14,6 @@ async function findClientById(id) {
   return data.client || null;
 }
 
-/**
- * Busca cliente por CPF ou CNPJ
- */
 async function findClientByCpfCnpj(document) {
   const response = await fetch(APPS_SCRIPT_URL, {
     method: 'POST',
@@ -34,16 +28,13 @@ async function findClientByCpfCnpj(document) {
   return data.client || null;
 }
 
-/**
- * Busca cliente por telefone (WhatsApp)
- */
 async function findClientByPhone(phone) {
   const response = await fetch(APPS_SCRIPT_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       action: 'findByPhone',
-      phone: String(phone).replace(/\D/g, '')
+      phone: normalizePhone(phone)
     })
   });
 
@@ -51,9 +42,6 @@ async function findClientByPhone(phone) {
   return data.client || null;
 }
 
-/**
- * Busca solicitação de orçamento
- */
 async function findQuoteRequest(filters) {
   const response = await fetch(APPS_SCRIPT_URL, {
     method: 'POST',
@@ -68,12 +56,31 @@ async function findQuoteRequest(filters) {
   return data.quote || null;
 }
 
-/**
- * Normaliza valor (remove caracteres especiais)
- */
 function normalizeValue(value) {
   if (!value) return '';
   return String(value).replace(/\D/g, '').trim();
+}
+
+function normalizeText(value) {
+  if (!value) return '';
+  return String(value)
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^\w\s]/gi, '')
+    .replace(/\s+/g, '')
+    .trim();
+}
+
+function normalizePhone(phone) {
+  if (!phone) return '';
+  let clean = String(phone).replace(/\D/g, '');
+
+  if (clean.length === 13 && clean.startsWith('55')) {
+    clean = clean.slice(2);
+  }
+
+  return clean;
 }
 
 module.exports = {
@@ -81,5 +88,7 @@ module.exports = {
   findClientByCpfCnpj,
   findClientByPhone,
   findQuoteRequest,
-  normalizeValue
+  normalizeValue,
+  normalizeText,
+  normalizePhone
 };
